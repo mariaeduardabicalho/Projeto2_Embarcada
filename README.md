@@ -8,8 +8,9 @@
     - Sensor de qualidade (
     - RTOS
     - Prototipo
-  - B (2 itens)
-  - A (+1 item)
+    
+ - B (2 itens)
+ - A (+1 item)
      - ultrasom
          - timer
          - calibrar
