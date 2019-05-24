@@ -6,13 +6,26 @@
 /* defines                                                              */
 /************************************************************************/
 
-// TRIGGER
+/* Canal do sensor de ph */
+#define AFEC_CHANNEL 0
+
+// AFEC
+/** Reference voltage for AFEC,in mv. */
+#define VOLT_REF        (3300)
+
+/** The maximal digital value */
+/** 2^12 - 1                  */
+#define MAX_DIGITAL     (4095)
+
+
+
+// TRIGGER SONAR
 #define TRIGGER_PIO_A      PIOD
 #define TRIGGER_PIO_ID_A    ID_PIOD
-#define TRIGGER_IDX_A       30
+#define TRIGGER_IDX_A       26
 #define TRIGGER_IDX_MASK_A  (1 << TRIGGER_IDX_A)
 
-// Botão
+// ECHO SONAR
 #define ECHO_PIO_A       PIOC
 #define ECHO_PIO_ID_A    ID_PIOC
 #define ECHO_IDX_A   13
@@ -44,7 +57,7 @@
 
 /** RTOS  */
 #define TASK_TRIGGER_STACK_SIZE            (1024/sizeof(portSTACK_TYPE))
-#define TASK_TRIGGER_STACK_PRIORITY        (tskIDLE_PRIORITY)
+#define TASK_TRIGGER_STACK_PRIORITY        (tskIDLE_PRIORITY+1)
 #define TASK_UARTTX_STACK_SIZE             (2048/sizeof(portSTACK_TYPE))
 #define TASK_UARTTX_STACK_PRIORITY         (tskIDLE_PRIORITY)
 #define TASK_UARTRX_STACK_SIZE             (2048/sizeof(portSTACK_TYPE))
@@ -77,9 +90,9 @@ SemaphoreHandle_t xSemaphoreCounter;
 SemaphoreHandle_t xSemaphoreTC;
 QueueHandle_t xWaterQueue;
 
-/** Semaforo a ser usado pela task led */
-//SemaphoreHandle_t hc04_B_StartSemaphore;
-
+/** Queue da task AFEC */
+QueueHandle_t xQueueAfec;
+QueueHandle_t xQueuePh;
 
 /** prototypes */
 void but_callback(void);
@@ -175,6 +188,14 @@ void TC0_Handler(void){
 	//xSemaphoreGiveFromISR(xSemaphoreTC, &xHigherPriorityTaskWoken);
 	flag_tc = true;
 	//printf("AA      ");
+}
+
+static void AFEC_callback(void)
+{
+	int32_t ph_value;
+	ph_value = afec_channel_get_value(AFEC0, AFEC_CHANNEL);
+	xQueueSendFromISR( xQueueAfec, &ph_value, 0);
+	
 }
 
 
@@ -277,6 +298,47 @@ void TC_init1(Tc * TC, int ID_TC, int TC_CHANNEL, int freq){
 	tc_start(TC, TC_CHANNEL);
 }
 
+static void config_ADC(void){
+	afec_enable(AFEC0);
+
+	/* struct de configuracao do AFEC */
+	struct afec_config afec_cfg;
+
+	/* Carrega parametros padrao */
+	afec_get_config_defaults(&afec_cfg);
+
+	/* Configura AFEC */
+	afec_init(AFEC0, &afec_cfg);
+
+	/* Configura trigger por software */
+	afec_set_trigger(AFEC0, AFEC_TRIG_SW);
+
+	/* configura call back */
+	afec_set_callback(AFEC0, AFEC_INTERRUPT_EOC_0,	AFEC_callback, 5);
+
+	/*** Configuracao espec?fica do canal AFEC ***/
+	struct afec_ch_config afec_ch_cfg;
+	afec_ch_get_config_defaults(&afec_ch_cfg);
+	afec_ch_cfg.gain = AFEC_GAINVALUE_0;
+	afec_ch_set_config(AFEC0, AFEC_CHANNEL, &afec_ch_cfg);
+
+	/*
+	* Calibracao:
+	* Because the internal ADC offset is 0x200, it should cancel it and shift
+	 down to 0.
+	 */
+	afec_channel_set_analog_offset(AFEC0, AFEC_CHANNEL, 0x200);
+
+	/***  Configura sensor de temperatura ***/
+	struct afec_temp_sensor_config afec_temp_sensor_cfg;
+
+	afec_temp_sensor_get_config_defaults(&afec_temp_sensor_cfg);
+	afec_temp_sensor_set_config(AFEC0, &afec_temp_sensor_cfg);
+
+	/* Selecina canal e inicializa convers?o */
+	afec_channel_enable(AFEC0, AFEC_CHANNEL);
+}
+
 void io_init(void){
 
     //Configura TRIGGER
@@ -336,6 +398,24 @@ float calc_distance_m(float ts){
   return(ts * SOUND_SPEED_MS/2);
 }
 
+static int32_t convert_adc_to_ph(int32_t ADC_value){
+
+  int32_t ul_vol;
+  int32_t ul_temp;
+
+  /*
+   * converte bits -> tens?o (Volts)
+   */
+	ul_vol = ADC_value * 100 / 4096;
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
+  /*
+   * According to datasheet, The output voltage VT = 0.72V at 27C
+   * and the temperature slope dVT/dT = 2.33 mV/C
+   */
+  
+  return(ul_vol);
+}
+
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
@@ -351,14 +431,16 @@ xSemaphoreTC = xSemaphoreCreateBinary();
   float ts;
 	while(1){ 
     
-   signal_trigger();
+    signal_trigger();
+
     if( xQueueReceive(hc04_A_EchoQueue, &ts, ( TickType_t ) 100 / portTICK_PERIOD_MS) == pdTRUE ){
       float dm = calc_distance_m(ts);
 	  int water_level = (int) (224 - (dm*100));
       //printf("Distancia = %d cm\t", (int) (dm*100));
 	  printf("\n");
-	  //printf("Nivel de agua = %d cm\n\n", (int) (224 - (dm*100)));
-    }    
+	  printf("Nivel de agua = %d cm\n\n", (int) (224 - (dm*100)));
+    }  
+	  
     vTaskDelay(100 / portTICK_PERIOD_MS);
 	}
 }
@@ -407,7 +489,7 @@ static void task_water_flow(void *pvParameters){
 	while(1){
 		vTaskDelay(500 / portTICK_PERIOD_MS);
 		xSemaphoreGive(xSemaphoreCounter);
-		printf("1seg");
+		//printf("1seg");
 	}
 }
 
@@ -416,6 +498,26 @@ static void task_ihm(void *pvParameters){
   
   
 }  
+
+void task_afec(void){
+	xQueueAfec = xQueueCreate( 10, sizeof( int32_t ) );
+
+	config_ADC();
+	afec_start_software_conversion(AFEC0);
+	
+	int32_t adc_value;
+	int32_t ph_value;
+
+	while (true) {
+		if (xQueueReceive( xQueueAfec, &(adc_value), ( TickType_t )  2000 / portTICK_PERIOD_MS)) {
+			ph_value = convert_adc_to_ph(adc_value);
+			afec_start_software_conversion(AFEC0);
+			//xQueueSend( xQueuePh, &ph_value, 0);
+			printf(" \n PH: %d \n", ph_value);
+		}
+		vTaskDelay(1000);
+	}
+}
 
 /************************************************************************/
 /* inits                                                                */
@@ -491,6 +593,11 @@ int main(void){
 	}
 
 	if (xTaskCreate(task_water_flow, "water", TASK_UARTTX_STACK_SIZE, NULL,
+	TASK_UARTTX_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create UartTx task\r\n");
+	}
+
+	if (xTaskCreate(task_afec, "afec", TASK_UARTTX_STACK_SIZE, NULL,
 	TASK_UARTTX_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create UartTx task\r\n");
 	}
