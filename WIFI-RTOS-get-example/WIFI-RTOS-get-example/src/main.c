@@ -209,15 +209,21 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
       printf("socket_msg_connect\n"); 
 			if (gbTcpConnection) {
 				memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
-				int resul=10;
-				char buffer[256];
-				sprintf(buffer, "data=%d", resul);
+				int ph=10; //1
+				int ultr=10;//2
+				int flux=10;//3
+				char buffer[270];
 				
-				sprintf((char *)gau8ReceivedBuffer, "%sContent-Length: %d\n%s%s" ,
+				//json
+				sprintf(buffer, "{\"%s\":%d,\"%s\":%d,\"%s\":%d}", "ph",ph,"ultr",ultr,"flux",flux);
+				//"Content-Type: application/x-www-form-urlencoded\n\n",
+				sprintf((char *)gau8ReceivedBuffer, "%sContent-Length: %d\n%s%s",
 				"PUT /1 HTTP/1.0\n",
 				strlen(buffer),
-				"Content-Type: application/x-www-form-urlencoded\n\n",
+				"Content-Type: application/json\n\n",
 				 buffer);
+				 printf("----------------------------------------------\n");
+				 printf(gau8ReceivedBuffer);
 
 				tstrSocketConnectMsg *pstrConnect = (tstrSocketConnectMsg *)pvMsg;
 				if (pstrConnect && pstrConnect->s8Error >= SOCK_ERR_NO_ERROR) {
@@ -319,7 +325,32 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 	{
 		break;
 	}
+	
+	case M2M_WIFI_RESP_GET_SYS_TIME:
+		/*Initial first callback will be provided by the WINC itself on the first communication with NTP */
+		{
+			tstrSystemTime *strSysTime_now = (tstrSystemTime *)pvMsg; 
+		
+			/* Print the hour, minute and second.
+			* GMT is the time at Greenwich Meridian.
+			*/
+		
+			printf("socket_cb: Year: %d, Month: %d, The GMT time is %u:%02u:%02u\r\n",
+					strSysTime_now->u16Year,
+					strSysTime_now->u8Month,
+					strSysTime_now->u8Hour,           /* hour (86400 equals secs per day) */
+					strSysTime_now->u8Minute,         /* minute (3600 equals secs per minute) */
+					strSysTime_now->u8Second);        /* second */
+			break;
+		}
+	
 	}
+	
+	
+	
+	
+	
+	
 }
 
 /**
@@ -402,6 +433,7 @@ static void task_wifi(void *pvParameters) {
 			  }
 		  }
 	  }
+	  vTaskDelay(100);
 	  }
 }
 /**

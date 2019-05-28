@@ -15,10 +15,12 @@ class TodoSimple(Resource):
        return {todo_id: todos[todo_id]}
 
    def put(self, todo_id):
-       todos[todo_id] = request.form['data']
+       ph = request.json['ph']
+       ultr=request.json['ultr']
+       flux=request.json['flux']
        print(" PEGOU DO PUT:::::::::::::::::::::::::::::::::::::::::;\n")
-       print( todos[todo_id])   
-       return {todo_id: todos[todo_id]}
+       print(ph)   
+       #return {todo_id: todos[ph]}
 
 api.add_resource(TodoSimple, '/<string:todo_id>')
 # api.add_resource(HelloWorld, '/')
