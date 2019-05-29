@@ -21,5 +21,6 @@
      - barquinho 
      - **converar com quimica**
      - firmware modular (aplicacao separada de GSM)
+     - timestamp
  
  
