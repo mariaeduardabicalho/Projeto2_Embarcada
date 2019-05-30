@@ -47,9 +47,14 @@ extern void vApplicationTickHook(void);
 extern void vApplicationMallocFailedHook(void);
 extern void xPortSysTickHandler(void);
 
+#define BUT_PIO PIOA
+#define BUT_PIO_ID 10
+#define BUT_PIO_IDX 11u
+#define BUT_IDX_MASK (1u << BUT_PIO_IDXCalled
+
 
 /**
- * \brief Called if stack overflow during execution
+ * \brief ) if stack overflow during execution
  */
 extern void vApplicationStackOverflowHook(xTaskHandle *pxTask,
 		signed char *pcTaskName)
@@ -209,13 +214,14 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
       printf("socket_msg_connect\n"); 
 			if (gbTcpConnection) {
 				memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
-				int ph=10; //1
-				int ultr=10;//2
-				int flux=10;//3
+				int dispositivo = 1;
+				int ph=7; 
+				int ultr=2;
+				int flux=50;
 				char buffer[270];
 				
 				//json
-				sprintf(buffer, "{\"%s\":%d,\"%s\":%d,\"%s\":%d}", "ph",ph,"ultr",ultr,"flux",flux);
+				sprintf(buffer, "{\"%s\":%d,\"%s\":%d,\"%s\":%d,\"%s\":%d}","dispositivo",dispositivo,"ph",ph,"ultr",ultr,"flux",flux);
 				//"Content-Type: application/x-www-form-urlencoded\n\n",
 				sprintf((char *)gau8ReceivedBuffer, "%sContent-Length: %d\n%s%s",
 				"PUT /1 HTTP/1.0\n",
@@ -232,6 +238,10 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 
 					memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
 					recv(tcp_client_socket, &gau8ReceivedBuffer[0], MAIN_WIFI_M2M_BUFFER_SIZE, 0);
+					////////sinalizacao mandou
+					LED_Toggle(LED0);
+					
+					
 				} else {
 					printf("socket_cb: connect error!\r\n");
 					gbTcpConnection = false;
