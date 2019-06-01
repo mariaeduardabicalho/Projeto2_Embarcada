@@ -90,7 +90,7 @@
 	#include "board.h"
 #endif
 
-#define configASSERT_DEFINED 1
+#define configASSERT_DEFINED 0
 
 #define configUSE_PREEMPTION					1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION	1

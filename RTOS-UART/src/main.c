@@ -1,10 +1,42 @@
 #include <asf.h>
 #include "conf_board.h"
+#include <string.h>
+
+
+
+
+extern void vApplicationStackOverflowHook(xTaskHandle *pxTask,
+signed char *pcTaskName);
+extern void vApplicationIdleHook(void);
+extern void vApplicationTickHook(void);
+extern void vApplicationMallocFailedHook(void);
+extern void xPortSysTickHandler(void);
+
+int year;
+int month;
+int day;
+int week;
+int hour;
+int minute;
+int second;
 
 
 /************************************************************************/
 /* defines                                                              */
 /************************************************************************/
+
+/* defines para o RTC */
+#define YEAR        2018
+#define MONTH       3
+#define DAY         19
+#define WEEK        12
+#define HOUR        15
+#define MINUTE      45
+#define SECOND      0
+
+
+
+
 
 /* Canal do sensor de ph */
 #define AFEC_CHANNEL 0
@@ -81,6 +113,10 @@ volatile spin_counter = 0;
 volatile flag_tc = false;
 
 
+/** Semaforo do counter do timer do sonar */
+SemaphoreHandle_t xSemaphoreCounter2;
+
+
 SemaphoreHandle_t xSMF;//Objeto do semaforo
 QueueHandle_t hc04_A_EchoQueue;
 
@@ -102,7 +138,7 @@ QueueHandle_t xQueueData;
 typedef struct {
 	uint id;
 	int32_t value;
-	int timestamp;
+	char timestamp[64];
 } sensorData;
 
 
@@ -114,7 +150,7 @@ static void USART1_init(void);
 uint32_t usart_puts(uint8_t *pstring);
 void io_init(void);
 void TC_init0(Tc * TC, int ID_TC, int TC_CHANNEL, int freq);
-void TC_init1(Tc * TC, int ID_TC, int TC_CHANNEL, int freq);
+void RTC_init(void);
 
 /************************************************************************/
 /* RTOS application funcs                                               */
@@ -211,6 +247,27 @@ static void AFEC_callback(void)
 	
 }
 
+void RTC_Handler(void)
+{
+	printf("ALBBBBBBBBBBBBBBRME");
+	uint32_t ul_status = rtc_get_status(RTC);
+
+
+	if ((ul_status & RTC_SR_SEC) == RTC_SR_ALARM) {
+		printf("ALAAAAAAAAAAAAAAAARME");
+		rtc_clear_status(RTC, RTC_SCCR_SECCLR);
+		
+		
+		//rtc_get_time(ID_RTC);
+	}
+	
+	rtc_clear_status(RTC, RTC_SCCR_ACKCLR);
+	rtc_clear_status(RTC, RTC_SCCR_TIMCLR);
+	rtc_clear_status(RTC, RTC_SCCR_CALCLR);
+	rtc_clear_status(RTC, RTC_SCCR_TDERRCLR);
+	rtc_clear_status(RTC, RTC_SCCR_SECCLR);
+	
+}
 
 
 
@@ -280,35 +337,30 @@ void TC_init0(Tc * TC, int ID_TC, int TC_CHANNEL, int freq){
 	/* Inicializa o canal 0 do TC */
 }
 
-void TC_init1(Tc * TC, int ID_TC, int TC_CHANNEL, int freq){
-	
-	uint32_t ul_div;
-	uint32_t ul_tcclks;
-	uint32_t ul_sysclk = sysclk_get_cpu_hz();
-
-	//uint32_t channel = 1;
-
+void RTC_init(){
 	/* Configura o PMC */
-	/* O TimerCounter é meio confuso
-	o uC possui 3 TCs, cada TC possui 3 canais
-	TC0 : ID_TC0, ID_TC1, ID_TC2
-	TC1 : ID_TC3, ID_TC4, ID_TC5
-	TC2 : ID_TC6, ID_TC7, ID_TC8
-	*/
-	pmc_enable_periph_clk(ID_TC);
+	pmc_enable_periph_clk(ID_RTC);
 
-	/** Configura o TC para operar em  4Mhz e interrupçcão no RC compare */
-	tc_find_mck_divisor(freq, ul_sysclk, &ul_div, &ul_tcclks, ul_sysclk);
-	tc_init(TC, TC_CHANNEL, ul_tcclks | TC_CMR_CPCTRG);
-	tc_write_rc(TC, TC_CHANNEL, (ul_sysclk / ul_div) / freq);
+	/* Default RTC configuration, 24-hour mode */
+	rtc_set_hour_mode(RTC, 0);
 
-	/* Configura e ativa interrupçcão no TC canal 0 */
-	/* Interrupção no C */
-	NVIC_EnableIRQ((IRQn_Type) ID_TC);
-	tc_enable_interrupt(TC, TC_CHANNEL, TC_IER_CPCS);
+	/* Configura data e hora manualmente */
+	rtc_set_date(RTC, YEAR, MONTH, DAY, WEEK);
+	rtc_set_time(RTC, HOUR, MINUTE, SECOND);
 
-	/* Inicializa o canal 0 do TC */
-	tc_start(TC, TC_CHANNEL);
+	/* Configure RTC interrupts */
+	//NVIC_DisableIRQ(RTC_IRQn);
+	//NVIC_ClearPendingIRQ(RTC_IRQn);
+	//NVIC_SetPriority(RTC_IRQn, 5);
+	//NVIC_EnableIRQ(RTC_IRQn);
+
+	/* Ativa interrupcao via alarme */
+	//rtc_enable_interrupt(RTC, RTC_IER_ALREN);
+	
+
+	
+
+
 }
 
 static void config_ADC(void){
@@ -429,6 +481,15 @@ static int32_t convert_adc_to_ph(int32_t ADC_value){
 	return(ul_vol);
 }
 
+void get_time(char *timestamp){
+	rtc_get_date(RTC, &year, &month, &day, &week);
+	rtc_get_time(RTC, &hour, &minute, &second);
+	sprintf(timestamp, "%d/%d/%d - %02d:%02d:%02d", day, month, year, hour, minute, second);
+
+}
+
+
+
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
@@ -436,7 +497,7 @@ static int32_t convert_adc_to_ph(int32_t ADC_value){
 static void task_hc04_A(void *pvParameters){
 	//hc04_A_StartSemaphore = xSemaphoreCreateBinary();
 
-	xSemaphoreTC = xSemaphoreCreateBinary();
+	xSemaphoreCounter2 = xSemaphoreCreateBinary();
 	
 	//struct para enviar os dados para a task DATA
 	sensorData data;
@@ -445,10 +506,14 @@ static void task_hc04_A(void *pvParameters){
 
 	TC_init0(TIMER_A, TIMER_ID_A, TIMER_CHANNEL_A, TIMER_FREQ_A);
 	float ts;
+	char timestamp[64];
+	
 	while(1){
-		
 		signal_trigger();
 
+		
+
+		
 		if( xQueueReceive(hc04_A_EchoQueue, &ts, ( TickType_t ) 100 / portTICK_PERIOD_MS) == pdTRUE ){
 			float dm = calc_distance_m(ts);
 			int water_level = (int) (224 - (dm*100));
@@ -457,9 +522,15 @@ static void task_hc04_A(void *pvParameters){
 			//printf("\nNivel de agua = %d cm\n\n", (int) (224 - (dm*100)));
 			//printf("--------------------------------");
 			
-			data.id = 1;
-			data.value = 224 - (dm * 100);
-			xQueueSend( xQueueData, &data, 0);
+
+			if( xSemaphoreTake(xSemaphoreCounter2, ( TickType_t ) 5) == pdTRUE){
+				get_time(&timestamp);
+				data.id = 1;
+				data.value = 224 - (dm * 100);
+				strcpy(data.timestamp, timestamp);
+				xQueueSend( xQueueData, &data, 0);
+				
+			}
 		}
 		
 		vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -474,6 +545,7 @@ static void task_water_cicles(void *pvParameters){
 	
 	int cicles = 0;
 	int water_flow;
+	char timestamp[64];
 	io_init();
 
 
@@ -498,9 +570,10 @@ static void task_water_cicles(void *pvParameters){
 			cicles = 0;
 			//y=7.27273\dots x+3.63636
 			
-			
+			get_time(&timestamp);
 			data.id = 2;
 			data.value = water_flow;
+			strcpy(data.timestamp, timestamp);
 			xQueueSend( xQueueData, &data, 0);
 		}
 		
@@ -508,12 +581,24 @@ static void task_water_cicles(void *pvParameters){
 }
 
 static void task_timer(void *pvParameters){
+	//funcao para contar 1 segundo para o sensor de ciclos de agua
 	xSemaphoreCounter = xSemaphoreCreateBinary();
 
 	while(1){
 		vTaskDelay(500 / portTICK_PERIOD_MS);
 		xSemaphoreGive(xSemaphoreCounter);
 		//printf("1seg");
+	}
+}
+
+static void task_timer2(void *pvParameters){
+	//funcao para contar 10 segundos para  timer do sonar
+	xSemaphoreCounter2 = xSemaphoreCreateBinary();
+
+	while(1){
+		vTaskDelay(10000 / portTICK_PERIOD_MS);
+		xSemaphoreGive(xSemaphoreCounter2);
+		//printf("10 seg");
 	}
 }
 
@@ -527,6 +612,7 @@ void task_afec(void){
 	
 	int32_t adc_value;
 	int32_t ph_value;
+	char timestamp[64];
 
 	while (true) {
 		if (xQueueReceive( xQueueAfec, &(adc_value), ( TickType_t )  2000 / portTICK_PERIOD_MS)) {
@@ -535,11 +621,13 @@ void task_afec(void){
 			//xQueueSend( xQueuePh, &ph_value, 0);
 			//printf("\nPH: %d \n", ph_value);
 			
+			get_time(&timestamp);
 			data.id = 3;
 			data.value = ph_value;
+			strcpy(data.timestamp, timestamp);
 			xQueueSend( xQueueData, &data, 0);
 		}
-		vTaskDelay(1000);
+		vTaskDelay(500);
 	}
 }
 
@@ -553,11 +641,14 @@ void task_data(void){
 			printf("---------------------------");
 			printf("\nID: %d \t", data.id);
 			printf("VALUE: %d \n", data.value);
+			printf("TIME: %s \n", data.timestamp);
 			printf("---------------------------");
 		}
 		vTaskDelay(300);
 	}
 }
+
+
 
 /************************************************************************/
 /* inits                                                                */
@@ -620,6 +711,8 @@ int main(void){
 
 	/* Initialize the console uart */
 	configure_console();
+	RTC_init();
+	
 	
 	/* Create task to run the hc04_A sensor*/
 	if (xTaskCreate(task_hc04_A, "hc04_A", TASK_UARTTX_STACK_SIZE, NULL,
@@ -636,6 +729,11 @@ int main(void){
 	TASK_UARTTX_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create UartTx task\r\n");
 	}
+	
+	if (xTaskCreate(task_timer2, "timer2", TASK_UARTTX_STACK_SIZE, NULL,
+	TASK_UARTTX_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create UartTx task\r\n");
+	}
 
 	if (xTaskCreate(task_afec, "afec", TASK_UARTTX_STACK_SIZE, NULL,
 	TASK_UARTTX_STACK_PRIORITY, NULL) != pdPASS) {
@@ -646,7 +744,6 @@ int main(void){
 	TASK_UARTTX_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create UartTx task\r\n");
 	}
-
 
 
 
