@@ -15,19 +15,23 @@ class TodoSimple(Resource):
        return {todo_id: todos[todo_id]}
 
    def put(self, todo_id):
-       dispositivo=request.json['dispositivo']
-       ph = request.json['ph']
-       ultr=request.json['ultr']
-       flux=request.json['flux']
+
+
+       dispositivo = request.json['dispositivo']
+       id_sensor = request.json['id']
+       value = request.json['value']
+       timestamp = request.json['timestamp']
+
+
        print(" -------------------------------------------------------------\n")
-       print("Dispositivo conectado : ")
+       print("Dispositivo conectado: ")
        print(dispositivo)   
-       print("Ph :")
-       print(ph)   
-       print("Nível:")
-       print(ultr) 
-       print("Saída:")
-       print(flux)    
+       print("\nID do sensor:")
+       print(id_sensor)   
+       print("\nValor do sensor:")
+       print(value) 
+       print("Timestamp:")
+       print(timestamp)    
        #return {todo_id: todos[ph]}
 
 api.add_resource(TodoSimple, '/<string:todo_id>')

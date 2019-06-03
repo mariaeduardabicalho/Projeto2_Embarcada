@@ -149,6 +149,7 @@ int second;
 int id;
 int value;
 char timestamp[64];
+int dispositivo = 1;
 
 /** Semaforo do counter do timer do sonar */
 SemaphoreHandle_t xSemaphoreCounter2;
@@ -621,43 +622,45 @@ void get_time(char *timestamp){
 				 //printf("\nsocket_msg_connect\n");
 				 if (gbTcpConnection) {
 					 memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
-					int dispositivo = 1;
-					int ph=7;
-					int ultr=2;
-					int flux=50;
-					char buffer[270];
-					
-					//json
-					sprintf(buffer, "{\"%s\":%d,\"%s\":%d,\"%s\":%d,\"%s\":%d}","dispositivo",dispositivo,"ph",ph,"ultr",ultr,"flux",flux);
-					//"Content-Type: application/x-www-form-urlencoded\n\n",
-					sprintf((char *)gau8ReceivedBuffer, "%sContent-Length: %d\n%s%s",
-					"PUT /1 HTTP/1.0\n",
-					strlen(buffer),
-					"Content-Type: application/json\n\n",
-					buffer);
-					printf("----------------------------------------------\n");
-					printf(gau8ReceivedBuffer);
+					 //int ph = 10; //1
+					 //int ultr = 10;//2
+					 //int flux = 10;//3
+					 char buffer[270];
+					 
+					 //json
+					 sprintf(buffer, "{\"%s\":%d,\"%s\":%d,\"%s\":%d ,\"%s\":\"%s\"}", "dispositivo" , dispositivo, "id", id, "value", value, "timestamp", timestamp);
+						 
+					 //"Content-Type: application/x-www-form-urlencoded\n\n",
+					 sprintf((char *)gau8ReceivedBuffer, "%sContent-Length: %d\n%s%s", "PUT /1 HTTP/1.0\n", strlen(buffer),
+					 "Content-Type: application/json\n\n",
+					 buffer);
+					 printf("\n\n");
+					 printf("\n----------------------------------------------\n");
+					 //printf(gau8ReceivedBuffer);
+					 printf(buffer);
+					 printf("\n----------------------------------------------\n");
+					 printf("\n\n");
 
-					tstrSocketConnectMsg *pstrConnect = (tstrSocketConnectMsg *)pvMsg;
-					if (pstrConnect && pstrConnect->s8Error >= SOCK_ERR_NO_ERROR) {
-						printf("send \n");
-						send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
+					 tstrSocketConnectMsg *pstrConnect = (tstrSocketConnectMsg *)pvMsg;
+					 if (pstrConnect && pstrConnect->s8Error >= SOCK_ERR_NO_ERROR) {
+						 //printf("send \n");
+						 send(tcp_client_socket, gau8ReceivedBuffer, strlen((char *)gau8ReceivedBuffer), 0);
 
-						memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
-						recv(tcp_client_socket, &gau8ReceivedBuffer[0], MAIN_WIFI_M2M_BUFFER_SIZE, 0);
+						 memset(gau8ReceivedBuffer, 0, MAIN_WIFI_M2M_BUFFER_SIZE);
+						 recv(tcp_client_socket, &gau8ReceivedBuffer[0], MAIN_WIFI_M2M_BUFFER_SIZE, 0);
 						////////sinalizacao mandou
 						LED_Toggle(LED0);
-						
-						
-						} else {
-						printf("socket_cb: connect error!\r\n");
-						gbTcpConnection = false;
-						close(tcp_client_socket);
-						tcp_client_socket = -1;
-					}
-				}
-			}
-			break;
+						vTaskDelay(1000);
+						LED_Toggle(LED0);
+						 } else {
+						 printf("\nsocket_cb: connect error!\r\n");
+						 gbTcpConnection = false;
+						 close(tcp_client_socket);
+						 tcp_client_socket = -1;
+					 }
+				 }
+			 }
+			 break;
 			 
 
 
