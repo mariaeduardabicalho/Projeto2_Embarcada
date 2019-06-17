@@ -622,9 +622,6 @@ void get_time(char *timestamp){
 				 //printf("\nsocket_msg_connect\n");
 				 if (gbTcpConnection) {
 					 memset(gau8ReceivedBuffer, 0, sizeof(gau8ReceivedBuffer));
-					 //int ph = 10; //1
-					 //int ultr = 10;//2
-					 //int flux = 10;//3
 					 char buffer[270];
 					 
 					 //json
@@ -638,6 +635,7 @@ void get_time(char *timestamp){
 					 printf("\n----------------------------------------------\n");
 					 //printf(gau8ReceivedBuffer);
 					 printf(buffer);
+					 printf("\n%s", timestamp);
 					 printf("\n----------------------------------------------\n");
 					 printf("\n\n");
 
@@ -804,17 +802,17 @@ static void task_hc04_A(void *pvParameters){
 		
 		if( xQueueReceive(hc04_A_EchoQueue, &ts, ( TickType_t ) 100 / portTICK_PERIOD_MS) == pdTRUE ){
 			float dm = calc_distance_m(ts);
-			int water_level = (int) (224 - (dm*100));
+			int water_level = (int) (45 - (dm*100));
 			//printf("Distancia = %d cm\t", (int) (dm*100));
 			//printf("--------------------------------");
-			//printf("\nNivel de agua = %d cm\n\n", (int) (224 - (dm*100)));
+			//printf("\nNivel de agua = %d cm\n\n", (int) (45 - (dm*100)));
 			//printf("--------------------------------");
 			
 
 			if( xSemaphoreTake(xSemaphoreCounter2, ( TickType_t ) 5) == pdTRUE){
 				get_time(&timestamp);
 				data.id = 1;
-				data.value = 224 - (dm * 100);
+				data.value = 45 - (dm * 100);
 				strcpy(data.timestamp, timestamp);
 				xQueueSend( xQueueData, &data, 0);
 				
@@ -885,7 +883,7 @@ static void task_timer2(void *pvParameters){
 	xSemaphoreCounter2 = xSemaphoreCreateBinary();
 
 	while(1){
-		vTaskDelay(10000 / portTICK_PERIOD_MS);
+		vTaskDelay(1000 / portTICK_PERIOD_MS); //timer sonar
 		xSemaphoreGive(xSemaphoreCounter2);
 		//printf("10 seg");
 	}
@@ -905,7 +903,7 @@ void task_afec(void){
 
 	while (true) {
 		if (xQueueReceive( xQueueAfec, &(adc_value), ( TickType_t )  2000 / portTICK_PERIOD_MS)) {
-			ph_value = convert_adc_to_ph(adc_value);
+			ph_value = (int) (convert_adc_to_ph(adc_value))/10;
 			afec_start_software_conversion(AFEC0);
 			//xQueueSend( xQueuePh, &ph_value, 0);
 			//printf("\nPH: %d \n", ph_value);
